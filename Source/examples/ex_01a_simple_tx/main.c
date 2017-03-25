@@ -65,10 +65,13 @@ int main(void)
     if (dwt_initialise(DWT_LOADNONE) == DWT_ERROR)
     {
         //lcd_display_str("INIT FAILED");
+        printf2("%s","INIT FAILED\n");
         led_on(LED_PC7);
         while (1)
         { };
     }
+    USART_puts("INIT Successful\n");
+		printf2("%s","INIT Successful\n");
     spi_set_rate_high();
 
     /* Configure DW1000. See NOTE 3 below. */
@@ -77,6 +80,10 @@ int main(void)
     /* Loop forever sending frames periodically. */
     while(1)
     {
+        printf2("%d",tx_msg[1]);
+        USART_Send_Enter();
+        printf2("%s",&tx_msg[2]);
+        USART_Send_Enter();
         /* Write frame data to DW1000 and prepare transmission. See NOTE 4 below.*/
         dwt_writetxdata(sizeof(tx_msg), tx_msg, 0); /* Zero offset in TX buffer. */
         dwt_writetxfctrl(sizeof(tx_msg), 0, 0); /* Zero offset in TX buffer, no ranging. */

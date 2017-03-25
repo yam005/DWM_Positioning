@@ -61,9 +61,12 @@ int main(void)
     if (dwt_initialise(DWT_LOADNONE) == DWT_ERROR)
     {
         //lcd_display_str("INIT FAILED");
+        printf2("%s\n","INIT FAILED");
         while (1)
         { };
     }
+		USART_puts("INIT Successful\n");
+		printf2("%s","INIT Successful\n");
     spi_set_rate_high();
 
     /* Configure DW1000. */
@@ -105,6 +108,7 @@ int main(void)
 
             /* Clear good RX frame event in the DW1000 status register. */
             dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
+						printf2("%s\n",rx_buffer);
         }
         else
         {

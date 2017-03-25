@@ -11,8 +11,10 @@
  * @author DecaWave
  */
 #include "sleep.h"
-#include "lcd.h"
+//#include "lcd.h"
 #include "port.h"
+#include "deca_types.h"
+#include <string.h>
 
 #define rcc_init(x)					RCC_Configuration(x)
 #define systick_init(x)				SysTick_Configuration(x)
@@ -24,7 +26,7 @@
 #define ethernet_init(x)			No_Configuration(x)
 #define fs_init(x)					No_Configuration(x)
 #define usb_init(x)					No_Configuration(x)
-#define lcd_init(x)					LCD_Configuration(x)
+//#define lcd_init(x)					LCD_Configuration(x)
 #define touch_screen_init(x)		No_Configuration(x)
 
 #define USART_SUPPORT
@@ -519,18 +521,18 @@ int SPI2_Configuration(void)
 	GPIO_SetBits(SPIy_CS_GPIO, SPIy_CS);
 
 	// LCD_RS pin setup
-	GPIO_InitStructure.GPIO_Pin = LCD_RS;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+//	GPIO_InitStructure.GPIO_Pin = LCD_RS;
+//	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+//	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 
-	GPIO_Init(SPIy_GPIO, &GPIO_InitStructure);
+//	GPIO_Init(SPIy_GPIO, &GPIO_InitStructure);
 
 	// LCD_RW pin setup
-	GPIO_InitStructure.GPIO_Pin = LCD_RW;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+//	GPIO_InitStructure.GPIO_Pin = LCD_RW;
+//	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+//	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 
-	GPIO_Init(SPIy_GPIO, &GPIO_InitStructure);
+//	GPIO_Init(SPIy_GPIO, &GPIO_InitStructure);
 
     return 0;
 }
@@ -887,9 +889,9 @@ void USART_putc(char c)
 {
 	//while(!(USART2->SR & 0x00000040));
 	//USART_SendData(USART2,c);
+	while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
 	/* e.g. write a character to the USART */
 	USART_SendData(USART2, c);
-
 	/* Loop until the end of transmission */
 	while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)	;
 }
@@ -897,10 +899,21 @@ void USART_putc(char c)
 void USART_puts(const char *s)
 {
 	int i;
-	for(i=0; s[i]!=0; i++)
-	{
+	int len = strlen(s)-1;
+	for(i=0; i<len; i++) {
 		USART_putc(s[i]);
 	}
+	if(s[i]=='\n') {
+		USART_Send_Enter();
+	} else {
+		USART_putc(s[i]);
+	}
+}
+
+void USART_Send_Enter(void)
+{
+	USART_putc(0x0d);
+	USART_putc(0x0a);
 }
 
 #include <stdio.h>
@@ -973,12 +986,12 @@ static void spi_peripheral_init(void)
     spi_init();
 
     // Initialise SPI2 peripheral for LCD control
-    SPI2_Configuration();
-    port_LCD_RS_clear();
-    port_LCD_RW_clear();
+//    SPI2_Configuration();
+//    port_LCD_RS_clear();
+//    port_LCD_RW_clear();
 
     // Wait for LCD to power on.
-    sleep_ms(10);
+//    sleep_ms(10);
 }
 
 /*! ------------------------------------------------------------------------------------------------------------------

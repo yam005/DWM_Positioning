@@ -103,6 +103,10 @@ int is_switch_on(uint16_t GPIOpin);
 #define port_IS_LONGDLY_pressed()	is_dlybutton_low()
 
 #define USARTx						USART2
+void USART_putc(char c);
+void USART_puts(const char *s);
+void USART_Send_Enter(void);
+void printf2(const char *format, ...);
 
 #define port_USARTx_busy_sending()	(USART_GetFlagStatus((USARTx),(USART_FLAG_TXE))==(RESET))
 #define port_USARTx_no_data()		(USART_GetFlagStatus((USARTx),(USART_FLAG_RXNE))==(RESET))
