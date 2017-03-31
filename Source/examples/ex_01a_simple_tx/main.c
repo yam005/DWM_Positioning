@@ -38,7 +38,7 @@ static dwt_config_t config = {
  *     - byte 1: sequence number, incremented for each new frame.
  *     - byte 2 -> 9: device ID, see NOTE 1 below.
  *     - byte 10/11: frame check-sum, automatically set by DW1000.  */
-static uint8 tx_msg[] = {0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0, 0};
+static uint8 tx_msg[] = {0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0, 0, '\0'};
 /* Index to access to sequence number of the blink frame in the tx_msg array. */
 #define BLINK_FRAME_SN_IDX 1
 
@@ -70,8 +70,8 @@ int main(void)
         while (1)
         { };
     }
-    USART_puts("INIT Successful\n");
-		printf2("%s","INIT Successful\n");
+    //USART_puts("INIT Successful\n");
+    printf2("%s","INIT Successful\n");
     spi_set_rate_high();
 
     /* Configure DW1000. See NOTE 3 below. */
@@ -80,10 +80,7 @@ int main(void)
     /* Loop forever sending frames periodically. */
     while(1)
     {
-        printf2("%d",tx_msg[1]);
-        USART_Send_Enter();
-        printf2("%s",&tx_msg[2]);
-        USART_Send_Enter();
+        printf2("%d\t%s\n",tx_msg[1],tx_msg+2);
         /* Write frame data to DW1000 and prepare transmission. See NOTE 4 below.*/
         dwt_writetxdata(sizeof(tx_msg), tx_msg, 0); /* Zero offset in TX buffer. */
         dwt_writetxfctrl(sizeof(tx_msg), 0, 0); /* Zero offset in TX buffer, no ranging. */

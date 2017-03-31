@@ -65,8 +65,8 @@ int main(void)
         while (1)
         { };
     }
-		USART_puts("INIT Successful\n");
-		printf2("%s","INIT Successful\n");
+		//USART_puts("INIT Successful\n");
+		printf2("%s\n","INIT Successful");
     spi_set_rate_high();
 
     /* Configure DW1000. */
@@ -108,7 +108,7 @@ int main(void)
 
             /* Clear good RX frame event in the DW1000 status register. */
             dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
-						printf2("%s\n",rx_buffer);
+						printf2("%d\t%s\n",rx_buffer[1],rx_buffer+2);
         }
         else
         {

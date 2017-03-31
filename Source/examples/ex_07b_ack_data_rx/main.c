@@ -17,7 +17,7 @@
  */
 #include "deca_device_api.h"
 #include "deca_regs.h"
-#include "lcd.h"
+//#include "lcd.h"
 #include "port.h"
 
 /* Example application name and version to display on LCD screen. */
@@ -64,7 +64,7 @@ int main(void)
     peripherals_init();
 
     /* Display application name on LCD. */
-    lcd_display_str(APP_NAME);
+    //lcd_display_str(APP_NAME);
 
     /* Reset and initialise DW1000. See NOTE 4 below.
      * For initialisation, DW1000 clocks must be temporarily set to crystal speed. After initialisation SPI rate can be increased for optimum
@@ -73,10 +73,12 @@ int main(void)
     spi_set_rate_low();
     if (dwt_initialise(DWT_LOADNONE) == DWT_ERROR)
     {
-        lcd_display_str("INIT FAILED");
+        //lcd_display_str("INIT FAILED");
+        printf2("%s\n","INIT FAILED");
         while (1)
         { };
     }
+    printf2("%s\n","INIT Successful");
     spi_set_rate_high();
 
     /* Configure DW1000. See NOTE 5 below. */
@@ -114,6 +116,7 @@ int main(void)
             if (frame_len <= FRAME_LEN_MAX)
             {
                 dwt_readrxdata(rx_buffer, frame_len, 0);
+                printf2("%d\t%X%X%s\n", rx_buffer[2], rx_buffer[4], rx_buffer[3], rx_buffer+5);
             }
 
             /* TESTING BREAKPOINT LOCATION #1 */

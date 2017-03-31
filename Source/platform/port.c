@@ -893,7 +893,7 @@ void USART_putc(char c)
 	/* e.g. write a character to the USART */
 	USART_SendData(USART2, c);
 	/* Loop until the end of transmission */
-	while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)	;
+	//while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)	;
 }
 
 void USART_puts(const char *s)
@@ -922,16 +922,13 @@ void USART_Send_Enter(void)
 void printf2(const char *format, ...)
 {
 	va_list list;
-	int len = vsnprintf(0, 0, format, list);
+	int len;
 	char *s;
-	
 	va_start(list, format);
-
+	len = vsnprintf(0, 0, format, list);
 	s = (char *)malloc(len + 1);
 	vsprintf(s, format, list);
-
 	USART_puts(s);
-
 	free(s);
 	va_end(list);
 	return;
