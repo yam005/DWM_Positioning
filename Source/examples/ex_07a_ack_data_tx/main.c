@@ -25,17 +25,18 @@
 #define APP_NAME "ACK DATA TX v1.0"
 
 /* Default communication configuration. We use here EVK1000's default mode (mode 3). See NOTE 1 below. */
+/* change to Mode 4, 2-way ranging scheme, Short Range, High Density. */
 static dwt_config_t config = {
-    2,               /* Channel number. */
-    DWT_PRF_64M,     /* Pulse repetition frequency. */
-    DWT_PLEN_1024,   /* Preamble length. Used in TX only. */
-    DWT_PAC32,       /* Preamble acquisition chunk size. Used in RX only. */
-    9,               /* TX preamble code. Used in TX only. */
-    9,               /* RX preamble code. Used in RX only. */
-    1,               /* 0 to use standard SFD, 1 to use non-standard SFD. */
-    DWT_BR_110K,     /* Data rate. */
+    5,               /* Channel number. */
+    DWT_PRF_16M,     /* Pulse repetition frequency. */
+    DWT_PLEN_128,   /* Preamble length. Used in TX only. */
+    DWT_PAC8,       /* Preamble acquisition chunk size. Used in RX only. */
+    3,               /* TX preamble code. Used in TX only. */
+    3,               /* RX preamble code. Used in RX only. */
+    0,               /* 0 to use standard SFD, 1 to use non-standard SFD. */
+    DWT_BR_6M8,     /* Data rate. */
     DWT_PHRMODE_STD, /* PHY header mode. */
-    (1025 + 64 - 32) /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
+    (129 + 8 - 8) /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
 };
 
 /* The frame sent in this example is a data frame encoded as per the IEEE 802.15.4-2011 standard. It is a 21-byte frame composed of the following
@@ -47,7 +48,7 @@ static dwt_config_t config = {
  *     - byte 7/8: source address, see NOTE 2 below.
  *     - byte 9 to 18: MAC payload, see NOTE 1 below.
  *     - byte 19/20: frame check-sum, automatically set by DW1000. */
-static uint8 tx_msg[] = {0x61, 0x88, 0, 0xCA, 0xDE, 'X', 'R', 'X', 'T', 'm', 'a', 'c', 'p', 'a', 'y', 'l', 'o', 'a', 'd', 0, 0};
+static uint8 tx_msg[] = {0x61, 0x88, 0, 0xCA, 0xDE, 'X', 'R', 'X', 'T', 'm', 'a', 'c', 'p', 'a', 'y', 'l', 'o', 'a', 'd', 0, 0, '\0'};
 /* Index to access the sequence number and frame control fields in frames sent and received. */
 #define FRAME_FC_IDX 0
 #define FRAME_SN_IDX 2
@@ -84,20 +85,19 @@ static uint32 tx_frame_retry_nb = 0;
  */
 int main(void)
 {
+	int i;
+	uint8 rxstamp[5], txstamp[5];
+			
     /* Start with board specific hardware init. */
     peripherals_init();
-
-    /* Display application name on LCD. */
-    //lcd_display_str(APP_NAME);
 
     /* Reset and initialise DW1000.
      * For initialisation, DW1000 clocks must be temporarily set to crystal speed. After initialisation SPI rate can be increased for optimum
      * performance. */
     reset_DW1000(); /* Target specific drive of RSTn line into DW1000 low for a period. */
     spi_set_rate_low();
-    if (dwt_initialise(DWT_LOADNONE) == DWT_ERROR)
+    if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)
     {
-        //lcd_display_str("INIT FAILED");
         printf2("%s\n","INIT FAILED");
         while (1)
         { };
@@ -108,6 +108,9 @@ int main(void)
     /* Configure DW1000. See NOTE 5 below. */
     dwt_configure(&config);
 
+	/* Enable double receive buffer mode*/
+	//dwt_setdblrxbuffmode(ENABLE);
+
     /* Set delay to turn reception on immediately after transmission of the frame. See NOTE 6 below. */
     dwt_setrxaftertxdelay(0);
 
@@ -117,7 +120,14 @@ int main(void)
     /* Loop forever transmitting data. */
     while (1)
     {
-        /* TESTING BREAKPOINT LOCATION #1 */
+        /* make sure that the host/IC buffer pointers are aligned, 
+		* dw1000_user_manual_2.07.pdf Page 38, Figure 14: Flow chart for using double RX buffering */
+//		status_reg = dwt_read32bitreg(SYS_STATUS_ID); 
+//		if((status_reg & (SYS_STATUS_ICRBP >> 24)) !=     // IC side Receive Buffer Pointer
+//		((status_reg & (SYS_STATUS_HSRBP>>24)) << 1) ) // Host Side Receive Buffer Pointer
+//		{
+//			dwt_write8bitoffsetreg(SYS_CTRL_ID, SYS_CTRL_HRBT_OFFSET , 0x01) ; // We need to swap RX buffer status reg (write one to toggle internally)
+//		}
 
         /* Write frame data to DW1000 and prepare transmission. See NOTE 7 below.*/
         dwt_writetxdata(sizeof(tx_msg), tx_msg, 0); /* Zero offset in TX buffer. */
@@ -127,10 +137,20 @@ int main(void)
         dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
 
         /* We assume that the transmission is achieved normally, now poll for reception of a frame or error/timeout. See NOTE 8 below. */
-        while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
+        while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_LDEDONE | SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
         { };
+		dwt_readtxtimestamp(txstamp);
+		dwt_readrxtimestamp(rxstamp);
 
-        if (status_reg & SYS_STATUS_RXFCG)
+//		// make sure that the host/IC buffer pointers are aligned
+//		if((status_reg & (SYS_STATUS_ICRBP >> 24)) ==     // IC side Receive Buffer Pointer
+//		((status_reg & (SYS_STATUS_HSRBP>>24)) << 1) ) // Host Side Receive Buffer Pointer
+//		{
+//			dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD); // Clear all receive status bits
+//		}
+
+//        if ((status_reg & SYS_STATUS_RXFCG) && ((status_reg & SYS_STATUS_RXOVRR) == 0))
+		if (status_reg & SYS_STATUS_RXFCG)
         {
             /* Clear good RX frame event in the DW1000 status register. */
             dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
@@ -145,8 +165,22 @@ int main(void)
                 if ((rx_buffer[FRAME_FC_IDX] == ACK_FC_0) && (rx_buffer[FRAME_FC_IDX + 1] == ACK_FC_1)
                     && (rx_buffer[FRAME_SN_IDX] == tx_msg[FRAME_SN_IDX]))
                 {
+					printf2("%s", "rxstamp:");
+					for(i = 4; i >= 0; i--)
+					{
+						//dt[i] = rxstamp[i] - txstamp[i];
+						printf2("%02X", rxstamp[i]);
+					}
+					USART_putc('\t');
+					printf2("%s", "txstamp:");
+					for(i = 4; i >= 0; i--)
+					{
+						printf2("%02X", txstamp[i]);
+					}
+					USART_putc('\t');
+					printf2("%d\t%s\t%s\n", tx_msg[FRAME_SN_IDX], tx_msg+FRAME_SN_IDX+3, "Expected ACK!");
+					
                     tx_frame_acked = 1;
-                    printf2("%d\t%s\t%s\n", tx_msg[FRAME_SN_IDX], tx_msg+FRAME_SN_IDX+3, "Expected ACK!");
                 }
             }
         }

@@ -24,17 +24,18 @@
 #define APP_NAME "ACK DATA RX v1.0"
 
 /* Default communication configuration. We use here EVK1000's default mode (mode 3). */
+/* change to Mode 4, 2-way ranging scheme, Short Range, High Density. */
 static dwt_config_t config = {
-    2,               /* Channel number. */
-    DWT_PRF_64M,     /* Pulse repetition frequency. */
-    DWT_PLEN_1024,   /* Preamble length. Used in TX only. */
-    DWT_PAC32,       /* Preamble acquisition chunk size. Used in RX only. */
-    9,               /* TX preamble code. Used in TX only. */
-    9,               /* RX preamble code. Used in RX only. */
-    1,               /* 0 to use standard SFD, 1 to use non-standard SFD. */
-    DWT_BR_110K,     /* Data rate. */
+    5,               /* Channel number. */
+    DWT_PRF_16M,     /* Pulse repetition frequency. */
+    DWT_PLEN_128,   /* Preamble length. Used in TX only. */
+    DWT_PAC8,       /* Preamble acquisition chunk size. Used in RX only. */
+    3,               /* TX preamble code. Used in TX only. */
+    3,               /* RX preamble code. Used in RX only. */
+    0,               /* 0 to use standard SFD, 1 to use non-standard SFD. */
+    DWT_BR_6M8,     /* Data rate. */
     DWT_PHRMODE_STD, /* PHY header mode. */
-    (1025 + 64 - 32) /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
+    (129 + 8 - 8) /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
 };
 
 /* PAN ID/EUI/short address. See NOTE 1 and 2 below. */
@@ -60,6 +61,9 @@ static uint16 frame_len = 0;
  */
 int main(void)
 {
+	int i;
+	uint8 rxstamp[5];
+	
     /* Start with board specific hardware init. */
     peripherals_init();
 
@@ -71,7 +75,7 @@ int main(void)
      * performance. */
     reset_DW1000(); /* Target specific drive of RSTn line into DW1000 low for a period. */
     spi_set_rate_low();
-    if (dwt_initialise(DWT_LOADNONE) == DWT_ERROR)
+    if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)
     {
         //lcd_display_str("INIT FAILED");
         printf2("%s\n","INIT FAILED");
@@ -98,14 +102,18 @@ int main(void)
     /* Loop forever receiving frames. */
     while (1)
     {
+		
         /* Activate reception immediately. See NOTE 6 below. */
         dwt_rxenable(0);
 
         /* Poll until a frame is properly received or an RX error occurs. See NOTE 7 below.
-         * STATUS register is 5 bytes long but we are not interested in the high byte here, so we read a more manageable 32-bits with this API call. */
+         	* STATUS register is 5 bytes long but we are not interested in the high byte here, so we read a more manageable 32-bits with this API call. */
         while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)))
         { };
 
+		dwt_readrxdata(rx_buffer, frame_len, 0);
+		dwt_readrxtimestamp(rxstamp);
+		
         if (status_reg & SYS_STATUS_RXFCG)
         {
             /* Clear good RX frame event in the DW1000 status register. */
@@ -114,8 +122,14 @@ int main(void)
             /* A frame has been received, read it into the local buffer. */
             frame_len = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFL_MASK_1023;
             if (frame_len <= FRAME_LEN_MAX)
-            {
-                dwt_readrxdata(rx_buffer, frame_len, 0);
+            { 
+				printf2("%s", "rxstamp:");
+				for(i = 4; i >= 0; i--)
+				{
+					//dt[i] = rxstamp[i] - txstamp[i];
+					printf2("%02X", rxstamp[i]);
+				}
+				USART_putc('\t');
                 printf2("%d\t%X%X%s\n", rx_buffer[2], rx_buffer[4], rx_buffer[3], rx_buffer+5);
             }
 
