@@ -18,7 +18,6 @@
 #include "deca_device_api.h"
 #include "deca_regs.h"
 #include "sleep.h"
-//#include "lcd.h"
 #include "port.h"
 
 /* Example application name and version to display on LCD screen. */
@@ -56,6 +55,10 @@ static uint8 tx_msg[] = {0x61, 0x88, 0, 0xCA, 0xDE, 'X', 'R', 'X', 'T', 'm', 'a'
 #define ACK_FC_0 0x02
 #define ACK_FC_1 0x00
 
+/* Antenna Delay */
+#define ANT_DELAY 6103678
+
+
 /* Inter-frame delay period, in milliseconds. */
 #define TX_DELAY_MS 1000
 
@@ -64,6 +67,8 @@ static uint8 tx_msg[] = {0x61, 0x88, 0, 0xCA, 0xDE, 'X', 'R', 'X', 'T', 'm', 'a'
 
 /* Buffer to store received frame. See NOTE 4 below. */
 #define ACK_FRAME_LEN 5
+#define RPLY_LEN  10
+
 static uint8 rx_buffer[ACK_FRAME_LEN];
 
 /* Hold copy of status register state here for reference so that it can be examined at a debug breakpoint. */
@@ -86,7 +91,7 @@ static uint32 tx_frame_retry_nb = 0;
 int main(void)
 {
 	int i;
-	uint8 rxstamp[5], txstamp[5];
+	uint8 rxstamp[5], txstamp[5], rx_msg[RPLY_LEN];
 			
     /* Start with board specific hardware init. */
     peripherals_init();
@@ -102,7 +107,7 @@ int main(void)
         while (1)
         { };
     }
-    printf2("%s\n","INIT Successful");
+    printf2("%s\n","TX INIT Successful");
     spi_set_rate_high();
 
     /* Configure DW1000. See NOTE 5 below. */
@@ -117,39 +122,30 @@ int main(void)
     /* Set RX frame timeout for the response. */
     dwt_setrxtimeout(RX_RESP_TO_UUS);
 
+	/* Set TX and RX antenna delay */
+	//dwt_setrxantennadelay(uint16 rxDelay)
+
     /* Loop forever transmitting data. */
     while (1)
     {
-        /* make sure that the host/IC buffer pointers are aligned, 
-		* dw1000_user_manual_2.07.pdf Page 38, Figure 14: Flow chart for using double RX buffering */
-//		status_reg = dwt_read32bitreg(SYS_STATUS_ID); 
-//		if((status_reg & (SYS_STATUS_ICRBP >> 24)) !=     // IC side Receive Buffer Pointer
-//		((status_reg & (SYS_STATUS_HSRBP>>24)) << 1) ) // Host Side Receive Buffer Pointer
-//		{
-//			dwt_write8bitoffsetreg(SYS_CTRL_ID, SYS_CTRL_HRBT_OFFSET , 0x01) ; // We need to swap RX buffer status reg (write one to toggle internally)
-//		}
-
         /* Write frame data to DW1000 and prepare transmission. See NOTE 7 below.*/
         dwt_writetxdata(sizeof(tx_msg), tx_msg, 0); /* Zero offset in TX buffer. */
-        dwt_writetxfctrl(sizeof(tx_msg), 0, 0); /* Zero offset in TX buffer, no ranging. */
+        dwt_writetxfctrl(sizeof(tx_msg), 0, 1); /* Zero offset in TX buffer, enable ranging. */
 
         /* Start transmission, indicating that a response is expected so that reception is enabled immediately after the frame is sent. */
         dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
+		while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS))
+        { };
 
+        /* Clear TX frame sent event. */
+        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS);
+		
         /* We assume that the transmission is achieved normally, now poll for reception of a frame or error/timeout. See NOTE 8 below. */
         while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_LDEDONE | SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
         { };
 		dwt_readtxtimestamp(txstamp);
 		dwt_readrxtimestamp(rxstamp);
-
-//		// make sure that the host/IC buffer pointers are aligned
-//		if((status_reg & (SYS_STATUS_ICRBP >> 24)) ==     // IC side Receive Buffer Pointer
-//		((status_reg & (SYS_STATUS_HSRBP>>24)) << 1) ) // Host Side Receive Buffer Pointer
-//		{
-//			dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD); // Clear all receive status bits
-//		}
-
-//        if ((status_reg & SYS_STATUS_RXFCG) && ((status_reg & SYS_STATUS_RXOVRR) == 0))
+		
 		if (status_reg & SYS_STATUS_RXFCG)
         {
             /* Clear good RX frame event in the DW1000 status register. */
@@ -160,25 +156,45 @@ int main(void)
             if (frame_len == ACK_FRAME_LEN)
             {
                 dwt_readrxdata(rx_buffer, frame_len, 0);
+				
+				/* Clear good RX frame event in the DW1000 status register. */
+				dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
 
                 /* Check if it is the expected ACK. */
                 if ((rx_buffer[FRAME_FC_IDX] == ACK_FC_0) && (rx_buffer[FRAME_FC_IDX + 1] == ACK_FC_1)
                     && (rx_buffer[FRAME_SN_IDX] == tx_msg[FRAME_SN_IDX]))
-                {
-					printf2("%s", "rxstamp:");
+                {	
+					dwt_rxenable(DWT_START_RX_IMMEDIATE);
+					
+					/* Poll until a frame is properly received or an RX error occurs. See NOTE 7 below.
+					* STATUS register is 5 bytes long but we are not interested in the high byte here, so we read a more manageable 32-bits with this API call. */
+					while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & ( SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)))
+					{ };
+					dwt_readrxdata(rx_msg, RPLY_LEN, 0);
+					
+					printf2("%s", "T4:");
 					for(i = 4; i >= 0; i--)
 					{
 						//dt[i] = rxstamp[i] - txstamp[i];
 						printf2("%02X", rxstamp[i]);
 					}
-					USART_putc('\t');
-					printf2("%s", "txstamp:");
+					printf2("\t%s", "T3:");
 					for(i = 4; i >= 0; i--)
 					{
 						printf2("%02X", txstamp[i]);
 					}
+					printf2("\t%s", "T2:");
+					for(i = 4; i >= 0; i--)
+					{	
+						printf2("%02X", rx_msg[i]);
+					}
+					printf2("\t%s", "T1:");
+					for(i = 9; i >= 5; i--)
+					{	
+						printf2("%02X", rx_msg[i]);
+					}
 					USART_putc('\t');
-					printf2("%d\t%s\t%s\n", tx_msg[FRAME_SN_IDX], tx_msg+FRAME_SN_IDX+3, "Expected ACK!");
+					printf2("%d\t%s\b%s\n", tx_msg[FRAME_SN_IDX], tx_msg+FRAME_SN_IDX+3, "ACK!");
 					
                     tx_frame_acked = 1;
                 }

@@ -17,11 +17,13 @@
  */
 #include "deca_device_api.h"
 #include "deca_regs.h"
-//#include "lcd.h"
 #include "port.h"
+#include <string.h>
 
 /* Example application name and version to display on LCD screen. */
 #define APP_NAME "ACK DATA RX v1.0"
+
+#define RPLY_LEN  10
 
 /* Default communication configuration. We use here EVK1000's default mode (mode 3). */
 /* change to Mode 4, 2-way ranging scheme, Short Range, High Density. */
@@ -62,13 +64,10 @@ static uint16 frame_len = 0;
 int main(void)
 {
 	int i;
-	uint8 rxstamp[5];
+	uint8 rxstamp[5], txstamp[5], tx_msg[RPLY_LEN];
 	
     /* Start with board specific hardware init. */
     peripherals_init();
-
-    /* Display application name on LCD. */
-    //lcd_display_str(APP_NAME);
 
     /* Reset and initialise DW1000. See NOTE 4 below.
      * For initialisation, DW1000 clocks must be temporarily set to crystal speed. After initialisation SPI rate can be increased for optimum
@@ -77,12 +76,11 @@ int main(void)
     spi_set_rate_low();
     if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)
     {
-        //lcd_display_str("INIT FAILED");
         printf2("%s\n","INIT FAILED");
         while (1)
         { };
     }
-    printf2("%s\n","INIT Successful");
+    printf2("%s\n","RX INIT Successful");
     spi_set_rate_high();
 
     /* Configure DW1000. See NOTE 5 below. */
@@ -110,9 +108,6 @@ int main(void)
          	* STATUS register is 5 bytes long but we are not interested in the high byte here, so we read a more manageable 32-bits with this API call. */
         while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)))
         { };
-
-		dwt_readrxdata(rx_buffer, frame_len, 0);
-		dwt_readrxtimestamp(rxstamp);
 		
         if (status_reg & SYS_STATUS_RXFCG)
         {
@@ -123,6 +118,8 @@ int main(void)
             frame_len = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFL_MASK_1023;
             if (frame_len <= FRAME_LEN_MAX)
             { 
+            	dwt_readrxdata(rx_buffer, frame_len, 0);
+				dwt_readrxtimestamp(rxstamp);
 				printf2("%s", "rxstamp:");
 				for(i = 4; i >= 0; i--)
 				{
@@ -130,7 +127,6 @@ int main(void)
 					printf2("%02X", rxstamp[i]);
 				}
 				USART_putc('\t');
-                printf2("%d\t%X%X%s\n", rx_buffer[2], rx_buffer[4], rx_buffer[3], rx_buffer+5);
             }
 
             /* TESTING BREAKPOINT LOCATION #1 */
@@ -145,7 +141,27 @@ int main(void)
 
                 /* Clear TXFRS event. */
                 dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS);
+				
+				dwt_readtxtimestamp(txstamp);
+				for (i = 0; i < 5; i++)
+				{
+					tx_msg[i] = txstamp[i];
+					tx_msg[i+5] = rxstamp[i];
+				}
+				/* Write frame data to DW1000 and prepare transmission.*/
+				dwt_writetxdata(RPLY_LEN+2, tx_msg, 0); /* Zero offset in TX buffer. */
+				dwt_writetxfctrl(RPLY_LEN+2, 0, 1); /* Zero offset in TX buffer, enable ranging. */
+				/* Start transmission */
+				dwt_starttx(DWT_START_TX_IMMEDIATE);
             }
+			printf2("%s", "txstamp:");
+			for(i = 4; i >= 0; i--)
+			{
+				//dt[i] = rxstamp[i] - txstamp[i];
+				printf2("%02X", txstamp[i]);
+			}
+			USART_putc('\t');
+			printf2("SN:%d\t%X%X%s\n", rx_buffer[2], rx_buffer[4], rx_buffer[3], rx_buffer+5);
         }
         else
         {
