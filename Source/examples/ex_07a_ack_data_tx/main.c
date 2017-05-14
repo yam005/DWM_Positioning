@@ -19,9 +19,11 @@
 #include "deca_regs.h"
 #include "sleep.h"
 #include "port.h"
+#include <stdlib.h>
+
 
 /* Example application name and version to display on LCD screen. */
-#define APP_NAME "ACK DATA TX v1.0"
+//#define APP_NAME "ACK DATA TX v1.0"
 
 /* Default communication configuration. We use here EVK1000's default mode (mode 3). See NOTE 1 below. */
 /* change to Mode 4, 2-way ranging scheme, Short Range, High Density. */
@@ -55,9 +57,6 @@ static uint8 tx_msg[] = {0x61, 0x88, 0, 0xCA, 0xDE, 'X', 'R', 'X', 'T', 'm', 'a'
 #define ACK_FC_0 0x02
 #define ACK_FC_1 0x00
 
-/* Antenna Delay */
-#define ANT_DELAY 6103678
-
 
 /* Inter-frame delay period, in milliseconds. */
 #define TX_DELAY_MS 1000
@@ -67,7 +66,7 @@ static uint8 tx_msg[] = {0x61, 0x88, 0, 0xCA, 0xDE, 'X', 'R', 'X', 'T', 'm', 'a'
 
 /* Buffer to store received frame. See NOTE 4 below. */
 #define ACK_FRAME_LEN 5
-#define RPLY_LEN  10
+#define RPLY_LEN  4
 
 static uint8 rx_buffer[ACK_FRAME_LEN];
 
@@ -91,7 +90,8 @@ static uint32 tx_frame_retry_nb = 0;
 int main(void)
 {
 	int i;
-	uint8 rxstamp[5], txstamp[5], rx_msg[RPLY_LEN];
+	uint8 rxstamp[5], txstamp[5], rx_msg[RPLY_LEN]; 
+	int32 dt1 = 0;
 			
     /* Start with board specific hardware init. */
     peripherals_init();
@@ -121,9 +121,6 @@ int main(void)
 
     /* Set RX frame timeout for the response. */
     dwt_setrxtimeout(RX_RESP_TO_UUS);
-
-	/* Set TX and RX antenna delay */
-	//dwt_setrxantennadelay(uint16 rxDelay)
 
     /* Loop forever transmitting data. */
     while (1)
@@ -171,30 +168,21 @@ int main(void)
 					while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & ( SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)))
 					{ };
 					dwt_readrxdata(rx_msg, RPLY_LEN, 0);
-					
-					printf2("%s", "T4:");
-					for(i = 4; i >= 0; i--)
+
+					for(i = 3; i >= 0; i--)
 					{
-						//dt[i] = rxstamp[i] - txstamp[i];
-						printf2("%02X", rxstamp[i]);
+						dt1 = dt1<<8;
+						dt1 += rxstamp[i]; 
+						dt1 -= txstamp[i];
 					}
-					printf2("\t%s", "T3:");
-					for(i = 4; i >= 0; i--)
-					{
-						printf2("%02X", txstamp[i]);
-					}
-					printf2("\t%s", "T2:");
-					for(i = 4; i >= 0; i--)
-					{	
-						printf2("%02X", rx_msg[i]);
-					}
-					printf2("\t%s", "T1:");
-					for(i = 9; i >= 5; i--)
+					printf2("%s%08X", "T4-T3:", dt1); 
+					printf2("\t%s", "T2-T1:");
+					for(i = 3; i >= 0; i--)
 					{	
 						printf2("%02X", rx_msg[i]);
 					}
 					USART_putc('\t');
-					printf2("%d\t%s\b%s\n", tx_msg[FRAME_SN_IDX], tx_msg+FRAME_SN_IDX+3, "ACK!");
+					printf2("%s%d\t%s\b%s\n", "SN:", tx_msg[FRAME_SN_IDX], tx_msg+FRAME_SN_IDX+3, "ACK!");
 					
                     tx_frame_acked = 1;
                 }

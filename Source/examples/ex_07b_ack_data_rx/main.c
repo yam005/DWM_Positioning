@@ -21,9 +21,9 @@
 #include <string.h>
 
 /* Example application name and version to display on LCD screen. */
-#define APP_NAME "ACK DATA RX v1.0"
+//#define APP_NAME "ACK DATA RX v1.0"
 
-#define RPLY_LEN  10
+#define RPLY_LEN  4
 
 /* Default communication configuration. We use here EVK1000's default mode (mode 3). */
 /* change to Mode 4, 2-way ranging scheme, Short Range, High Density. */
@@ -58,6 +58,10 @@ static uint32 status_reg = 0;
 /* Hold copy of frame length of frame received (if good) so that it can be examined at a debug breakpoint. */
 static uint16 frame_len = 0;
 
+/* Antenna Delay */
+#define ANT_DELAY 33255
+
+
 /**
  * Application entry point.
  */
@@ -65,6 +69,7 @@ int main(void)
 {
 	int i;
 	uint8 rxstamp[5], txstamp[5], tx_msg[RPLY_LEN];
+	int32 dt = 0;
 	
     /* Start with board specific hardware init. */
     peripherals_init();
@@ -97,6 +102,10 @@ int main(void)
     /* Activate auto-acknowledgement. Time is set to 0 so that the ACK is sent as soon as possible after reception of a frame. */
     dwt_enableautoack(0);
 
+	/* Set TX and RX antenna delay */
+	dwt_settxantennadelay(ANT_DELAY);
+	dwt_setrxantennadelay(ANT_DELAY);
+
     /* Loop forever receiving frames. */
     while (1)
     {
@@ -123,7 +132,6 @@ int main(void)
 				printf2("%s", "rxstamp:");
 				for(i = 4; i >= 0; i--)
 				{
-					//dt[i] = rxstamp[i] - txstamp[i];
 					printf2("%02X", rxstamp[i]);
 				}
 				USART_putc('\t');
@@ -143,11 +151,18 @@ int main(void)
                 dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS);
 				
 				dwt_readtxtimestamp(txstamp);
-				for (i = 0; i < 5; i++)
+				for(i = 3; i >= 0; i--)
 				{
-					tx_msg[i] = txstamp[i];
-					tx_msg[i+5] = rxstamp[i];
+					dt = dt<<8;
+					dt += txstamp[i]; 
+					dt -= rxstamp[i];
 				}
+				for(i = 0; i < 4; i++)
+				{
+					tx_msg[i] = 0xFF & dt;
+					dt = dt >> 8;
+				}
+				
 				/* Write frame data to DW1000 and prepare transmission.*/
 				dwt_writetxdata(RPLY_LEN+2, tx_msg, 0); /* Zero offset in TX buffer. */
 				dwt_writetxfctrl(RPLY_LEN+2, 0, 1); /* Zero offset in TX buffer, enable ranging. */
@@ -157,7 +172,6 @@ int main(void)
 			printf2("%s", "txstamp:");
 			for(i = 4; i >= 0; i--)
 			{
-				//dt[i] = rxstamp[i] - txstamp[i];
 				printf2("%02X", txstamp[i]);
 			}
 			USART_putc('\t');
